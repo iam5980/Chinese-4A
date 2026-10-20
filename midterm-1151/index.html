@@ -143,6 +143,13 @@ select{font:inherit;padding:6px 8px;border-radius:8px;border:1.5px solid var(--l
 .confetti i{position:absolute;top:-20px;width:10px;height:14px;border-radius:2px;animation:fall linear infinite}
 @keyframes fall{to{top:105%;transform:rotate(540deg)}}
 @media (prefers-reduced-motion:reduce){.d1,.d2,.arm,.leg,.hundred,.confetti i{animation:none!important}.confetti{display:none}}
+.rhud{width:100%;display:flex;flex-direction:column;gap:4px}
+.rrow{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:center;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.rrow b{color:var(--ink);font-size:17px}.rrow .cdw b{color:var(--bad)}
+.plus{text-align:center;font-size:14px;font-weight:700;color:var(--rose-deep);min-height:1.3em}
+.rsum{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:100%}
+.rsum div{background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:6px 2px;text-align:center;font-size:12px;color:var(--muted)}
+.rsum b{display:block;font-size:20px;color:var(--ink);font-variant-numeric:tabular-nums}
 .flag{display:inline-block;font-size:12px;background:var(--rose);color:var(--ink);border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:middle}
 @media (max-width:460px){.detail{grid-template-columns:1fr}.detail .tian{width:150px;margin:0 auto}}
 
@@ -413,6 +420,42 @@ function renderSfx(){const b=$('#sfxBtn');b.setAttribute('aria-pressed',sfxOn);b
 $('#sfxBtn').onclick=()=>{sfxOn=!sfxOn;save('zi4-sfx',sfxOn);renderSfx();if(sfxOn)SFX.ok()};
 renderSfx();
 
+/* ===== 每一關的計時與計分 ===== */
+let tmode=load('zi4-tmode','up'),rt=null;const QLIM=15;
+const rmt=t=>`${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,'0')}`;
+const timeChips=()=>`<div class="modes"><button class="chip" data-tm="up" aria-pressed="${tmode==='up'}">計時計分</button><button class="chip" data-tm="cd" aria-pressed="${tmode==='cd'}">每題 ${QLIM} 秒倒數</button></div>`;
+document.addEventListener('click',e=>{const b=e.target.closest('[data-tm]');if(!b)return;tmode=b.dataset.tm;save('zi4-tmode',tmode);document.querySelectorAll('[data-tm]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.tm===tmode))});
+function rtStart(key){rt={key,t0:Date.now(),score:0,streak:0,best:0,ok:0,n:0,qT:Date.now(),onTimeout:null,last:'',lastTick:-1,done:false}}
+function rtQ(onTimeout){if(!rt)return;rt.qT=Date.now();rt.onTimeout=(tmode==='cd'&&onTimeout)?onTimeout:null;rt.lastTick=-1;rtTick()}
+function rtAns(right){
+  if(!rt)return 0;rt.n++;rt.onTimeout=null;let pts=0;
+  if(right){rt.ok++;rt.streak++;rt.best=Math.max(rt.best,rt.streak);const sec=(Date.now()-rt.qT)/1000;
+    const sp=Math.round(50*Math.max(0,Math.min(1,1-(sec-3)/12))),cb=Math.min(5,rt.streak-1)*10;pts=100+sp+cb;rt.score+=pts;
+    rt.last=`＋${pts}${sp?`（快答 ＋${sp}）`:''}${rt.streak>1?`・${rt.streak} 連對`:''}`}
+  else{rt.streak=0;rt.last='連對中斷'}
+  rtTick();return pts;
+}
+function rtTick(){
+  if(!rt||rt.done)return;
+  const now=Date.now(),el=(now-rt.t0)/1000;
+  let cd='';
+  if(rt.onTimeout){const left=QLIM-(now-rt.qT)/1000,c=Math.ceil(left);
+    if(c<=3&&c>0&&c!==rt.lastTick){rt.lastTick=c;SFX.tick()}
+    cd=`<div class="timebar${left<=5?' warn':''}"><i style="width:${Math.max(0,left/QLIM*100)}%"></i></div>`;
+    if(left<=0){const f=rt.onTimeout;rt.onTimeout=null;f();return}}
+  document.querySelectorAll('.rhud').forEach(h=>{const sec=h.closest('section');if(sec&&sec.hidden)return;
+    h.innerHTML=`<div class="rrow"><span>時間 <b>${rmt(el)}</b></span><span>分數 <b>${rt.score}</b></span><span>連對 <b>${rt.streak}</b></span>${rt.onTimeout?`<span class="cdw">剩 <b>${Math.max(0,Math.ceil(QLIM-(now-rt.qT)/1000))}</b> 秒</span>`:''}</div>${cd}<div class="plus">${rt.last}</div>`})
+}
+setInterval(rtTick,250);
+function rtEnd(label){
+  if(!rt)return '';
+  rt.done=true;rt.onTimeout=null;const el=(Date.now()-rt.t0)/1000,acc=rt.n?Math.round(rt.ok/rt.n*100):0;
+  const key='zi4-rbest-'+rt.key+(label||''),best=load(key,null),rec=!best||rt.score>best.sc;
+  if(rec&&rt.n)save(key,{sc:rt.score,t:el});
+  return `<div class="rsum"><div><b>${rt.score}</b>分數</div><div><b>${rmt(el)}</b>用時</div><div><b>${acc}%</b>正確率</div><div><b>${rt.best}</b>最高連對</div></div>
+   <p class="qask">${rec&&rt.n?'<b style="color:var(--rose-deep)">新紀錄！</b>':`這一關最佳紀錄：${best?best.sc:0} 分`}</p>`;
+}
+
 /* ===== 範圍與錯題 ===== */
 let wrong=load('zi4-wrong',{}),wrongP=load('zi4-wrongp',{}),wrongF=load('zi4-wrongf',{}),wrongI=load('zi4-wrongi',{});
 const st={groups:new Set([1,2,3,4,5,6]),onlyWrong:false,sel:'灣',selfTest:false};
@@ -437,7 +480,7 @@ $('#scope').addEventListener('click',e=>{
 /* ===== 分頁 ===== */
 let tab='cards';
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>{
-  tab=b.dataset.tab;if(mm&&mm.timer){clearInterval(mm.timer);mm.timer=null}clearWTimer();
+  tab=b.dataset.tab;rt=null;if(mm&&mm.timer){clearInterval(mm.timer);mm.timer=null}clearWTimer();
   document.querySelectorAll('nav.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
   document.querySelectorAll('section').forEach(s=>s.hidden=s.id!=='tab-'+tab);
   refreshTab(true);
@@ -495,7 +538,7 @@ function writeIntro(){
     ${p.length?`<div class="bar">${sizeSel('wN')}<button class="btn primary" id="wGo">開始寫</button></div>`:emptyMsg}
     <p class="hint">限時模式時間到會自動交卷評分。寫字時一筆一筆寫，手指離開螢幕才算一畫，筆畫數才會準。</p></div>`;
   document.querySelectorAll('#writeArea [data-wt]').forEach(b=>b.onclick=()=>{wTime=+b.dataset.wt;save('zi4-wtime',wTime);writeIntro()});
-  const g=$('#wGo');if(g)g.onclick=()=>{const n=+$('#wN').value;ws={q:shuffle(p).slice(0,n),i:0,ok:0,bad:[],scores:[]};writeQ()};
+  const g=$('#wGo');if(g)g.onclick=()=>{const n=+$('#wN').value;rtStart('write');ws={q:shuffle(p).slice(0,n),i:0,ok:0,bad:[],scores:[]};writeQ()};
 }
 function promptWord(x){return x.w.split('').map(ch=>ch==='○'?`<span class="box">${x.z}</span>`:esc(ch)).join('')}
 function clearWTimer(){if(ws&&ws.timer){clearInterval(ws.timer);ws.timer=null}}
@@ -503,13 +546,13 @@ function writeQ(){
   clearWTimer();
   if(ws.i>=ws.q.length)return writeDone();
   const x=ws.q[ws.i];
-  $('#writeArea').innerHTML=`<div class="prompt"><span class="prog">第 ${ws.i+1} / ${ws.q.length} 字</span>
+  $('#writeArea').innerHTML=`<div class="prompt"><div class="rhud"></div><span class="prog">第 ${ws.i+1} / ${ws.q.length} 字</span>
       <div class="word">${promptWord(x)}</div><span class="hint">把框框裡的注音寫成國字　${sayBtn(x.w.replace('○',x.c),'聽一聽')}</span></div>
     ${wTime?`<div class="timebar" id="wBar"><i style="width:100%"></i></div><div class="prog" id="wLeft" style="text-align:center">剩下 ${wTime} 秒</div>`:''}
     ${padHTML(x.c)}
     <div class="center"><button class="btn" id="wClear">擦掉重寫</button><button class="btn primary" id="wShow">寫好了，評分</button></div>
     <div id="wRev"></div>`;
-  setupPad($('#writeArea'));
+  setupPad($('#writeArea'));rtQ(null);
   $('#wClear').onclick=clearPad;
   let done=false;
   const reveal=async(timeout)=>{
@@ -531,8 +574,8 @@ function writeQ(){
       <div class="center" style="margin-top:10px"><button class="btn ${sc.good?'primary':''}" id="wOk">我寫對了</button><button class="btn rose ${sc.good?'':'primary'}" id="wBad">寫錯了，記下來</button></div>
       <p class="hint" style="text-align:center">自動評分是參考：筆畫數很準，字形分數只能抓出明顯寫錯的字，細節請自己對照。</p>`;
     $('#wGhost').onclick=e=>{const g=$('#writeArea .ghost');g.hidden=!g.hidden;e.currentTarget.setAttribute('aria-pressed',!g.hidden)};
-    $('#wOk').onclick=()=>{if(!sc.good)SFX.ok();ws.ok++;ws.i++;writeQ()};
-    $('#wBad').onclick=()=>{SFX.bad();ws.bad.push(x.c);addWrong(x.c,'w');ws.i++;writeQ()};
+    $('#wOk').onclick=()=>{rtAns(true);if(!sc.good)SFX.ok();ws.ok++;ws.i++;writeQ()};
+    $('#wBad').onclick=()=>{rtAns(false);SFX.bad();ws.bad.push(x.c);addWrong(x.c,'w');ws.i++;writeQ()};
   };
   $('#wShow').onclick=()=>reveal(false);
   if(wTime){const t0=Date.now();let lastTick=-1;
@@ -547,13 +590,13 @@ function writeDone(){
   clearWTimer();
   const avg=ws.scores.length?Math.round(ws.scores.reduce((a,b)=>a+b,0)/ws.scores.length):0;
   if(ws.q.length&&ws.ok===ws.q.length)celebrate('全部寫對！');
-  $('#writeArea').innerHTML=`<div class="done-box"><div class="score">${ws.ok} / ${ws.q.length}</div>
+  $('#writeArea').innerHTML=`<div class="done-box"><div class="score">${ws.ok} / ${ws.q.length}</div>${rtEnd(wTime?'-'+wTime:'')}
    <p class="qask">自動評分平均 ${avg} 分</p>
    <p class="qask">${ws.bad.length?'這幾個字再多寫幾次：':'全部寫對，太棒了！'}</p>
    <div class="wlist">${ws.bad.map(c=>`<span class="wz">${c}</span>`).join('')}</div>
    <div class="center">${ws.bad.length?'<button class="btn rose primary" id="wRe">只重寫錯的字</button>':''}<button class="btn" id="wAgain">再來一輪</button></div></div>`;
   $('#wAgain').onclick=writeIntro;
-  const r=$('#wRe');if(r)r.onclick=()=>{ws={q:shuffle(ws.bad.map(c=>BY[c])),i:0,ok:0,bad:[],scores:[]};writeQ()};
+  const r=$('#wRe');if(r)r.onclick=()=>{rtStart('write');ws={q:shuffle(ws.bad.map(c=>BY[c])),i:0,ok:0,bad:[],scores:[]};writeQ()};
 }
 let cv,ctx,drawing=false,last=null,padStrokes=0,padLocked=false;
 const padHTML=ch=>`<div class="padwrap"><div class="tian pad"><div class="ghost" hidden>${ch}</div><canvas aria-label="寫字格"></canvas></div></div>`;
@@ -647,42 +690,44 @@ function quizIntro(k){
   const area=QA[k],p=pool();
   $(area).innerHTML=`<div class="qcard">
     <p class="qask">${k==='r'?'看字選出正確的<b>部首</b>。小心藏起來或變形的部首！':k==='s'?'算一算<b>筆畫數</b>：有時問「總共幾畫」，有時問「部首外幾畫」。可以用手指在桌上寫寫看再選。':'看字選出正確的<b>注音</b>，特別注意<b>聲調</b>。'}</p>
-    ${p.length?`<div class="bar">${sizeSel(k+'N')}<button class="btn primary" id="${k}Go">開始挑戰</button></div>`:emptyMsg}</div>`;
-  const g=$('#'+k+'Go');if(g)g.onclick=()=>{qs[k]={q:shuffle(p).slice(0,+$('#'+k+'N').value),i:0,ok:0,bad:[]};quizQ(k)};
+    ${p.length?`${timeChips()}<div class="bar">${sizeSel(k+'N')}<button class="btn primary" id="${k}Go">開始挑戰</button></div>`:emptyMsg}</div>`;
+  const g=$('#'+k+'Go');if(g)g.onclick=()=>{rtStart('q'+k);qs[k]={q:shuffle(p).slice(0,+$('#'+k+'N').value),i:0,ok:0,bad:[]};quizQ(k)};
 }
 function quizQ(k){
   const s=qs[k],area=QA[k];
   if(s.i>=s.q.length)return quizDone(k);
   const x=s.q[s.i],sub=k==='s'?(Math.random()<.5?'t':'o'):'';
   const opts=k==='r'?radOpts(x):k==='s'?strkOpts(sub==='t'?x.t:x.o):zyOpts(x.z),ans=k==='r'?x.r:k==='s'?String(sub==='t'?x.t:x.o):x.z;
-  $(area).innerHTML=`<div class="qcard"><span class="prog">第 ${s.i+1} / ${s.q.length} 題・答對 ${s.ok}</span>
+  $(area).innerHTML=`<div class="qcard"><div class="rhud"></div><span class="prog">第 ${s.i+1} / ${s.q.length} 題・答對 ${s.ok}</span>
     <div class="qchar">${x.c}</div>
     <p class="qask">${k==='r'?`「${x.c}」的部首是哪一個？`:k==='s'?(sub==='t'?`「${x.c}」<b>總共</b>幾畫？`:`「${x.c}」的部首是「${x.r}」，<b>部首外</b>還有幾畫？`):`「${x.c}」怎麼念？<span class="hint kai">（${x.w.replace('○',x.c)}）</span>`}</p>
     <div class="opts">${opts.map(o=>`<button class="opt" data-v="${o}">${k==='r'?`<span class="o1">${o}</span><span class="o2 zy">${RZ[o]||''}</span>`:k==='s'?`<span class="o1 zy">${o}</span><span class="o2">畫</span>`:`<span class="o1 zy">${o}</span>`}<span class="mark"></span></button>`).join('')}</div>
     <div id="${k}Fb" style="width:100%"></div></div>`;
-  document.querySelectorAll(area+' .opt').forEach(b=>b.onclick=()=>{
+  const answer=b=>{
     if(s.answered)return;s.answered=true;
-    const right=b.dataset.v===ans;
+    const right=!!b&&b.dataset.v===ans;rtAns(right);
     document.querySelectorAll(area+' .opt').forEach(o=>{o.disabled=true;
       if(o.dataset.v===ans){o.classList.add('ok');o.querySelector('.mark').textContent='✓ 正確答案'}
       else if(o===b){o.classList.add('bad');o.querySelector('.mark').textContent='✗ 你選的'}});
     if(right){s.ok++;SFX.ok()}else{SFX.bad();s.bad.push(x.c);addWrong(x.c,k)}
     const why=k==='r'||k==='s'?`「${x.c}」的部首是「<b>${x.r}</b>」（${RZ[x.r]||''}）${VAR[x.c]?`，在字裡寫成「${VAR[x.c]}」`:''}，部首外 <b>${x.o}</b> 畫，總共 <b>${x.t}</b> 畫。`
       :`「${x.c}」念 <b class="zy">${x.z}</b>，例如「${x.w.replace('○',x.c)}」。`;
-    $('#'+k+'Fb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}${why}<br>${k!=='z'?sayBtn(x.r,'念部首')+sayBtn(x.c,'念字'):sayBtn(x.c,'念字')+sayBtn(x.w.replace('○',x.c),'念語詞')}</div>
+    $('#'+k+'Fb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':b?'再記一次：':'時間到！'}${why}<br>${k!=='z'?sayBtn(x.r,'念部首')+sayBtn(x.c,'念字'):sayBtn(x.c,'念字')+sayBtn(x.w.replace('○',x.c),'念語詞')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="${k}Next">${s.i+1<s.q.length?'下一題':'看成績'}</button></div>`;
     $('#'+k+'Next').onclick=()=>{s.i++;s.answered=false;quizQ(k)};$('#'+k+'Next').focus();
-  });
+  };
+  document.querySelectorAll(area+' .opt').forEach(b=>b.onclick=()=>answer(b));
+  rtQ(()=>answer(null));
 }
 function quizDone(k){
   const s=qs[k],area=QA[k];if(s.q.length&&s.ok===s.q.length)celebrate('全部答對！');
-  $(area).innerHTML=`<div class="done-box"><div class="score">${s.ok} / ${s.q.length}</div>
+  $(area).innerHTML=`<div class="done-box"><div class="score">${s.ok} / ${s.q.length}</div>${rtEnd()}
    <p class="qask">${s.bad.length?'答錯的字：':'全對！'}</p>
    <div class="wlist">${s.bad.map(c=>`<span class="wz">${c}</span>`).join('')}</div>
    ${s.bad.length?`<div class="tbl"><table><tr><th>字</th><th>${k==='r'?'部首':k==='s'?'筆畫':'注音'}</th><th>語詞</th></tr>${s.bad.map(c=>{const x=BY[c];return `<tr><td class="k">${c}</td><td>${k==='r'?`<span class="kai">${radTxt(x)}</span>`:k==='s'?`部首外 ${x.o}・共 ${x.t} 畫`:`<span class="zy">${x.z}</span>`}</td><td class="kai">${x.w.replace('○',c)}</td></tr>`}).join('')}</table></div>`:''}
    <div class="center">${s.bad.length?`<button class="btn rose primary" id="${k}Re">只練答錯的</button>`:''}<button class="btn" id="${k}Again">再來一輪</button></div></div>`;
   $('#'+k+'Again').onclick=()=>quizIntro(k);
-  const r=$('#'+k+'Re');if(r)r.onclick=()=>{qs[k]={q:shuffle(s.bad.map(c=>BY[c])),i:0,ok:0,bad:[]};quizQ(k)};
+  const r=$('#'+k+'Re');if(r)r.onclick=()=>{rtStart('q'+k);qs[k]={q:shuffle(s.bad.map(c=>BY[c])),i:0,ok:0,bad:[]};quizQ(k)};
 }
 
 /* ===== 翻牌配對（計時賽／限時賽、連擊加分、星等、最佳紀錄）===== */
@@ -798,54 +843,57 @@ let ps=null;
 function polyIntro(){
   const ps0=POLY.filter(p=>st.groups.has(p.g)),it=polyPool();
   $('#polyArea').innerHTML=`<div class="qcard"><p class="qask">同一個字放在不同語詞裡，念法不一樣（第三課：與、空；第四課：行；第五課：曾）。先看下面的整理，再挑戰選注音。</p>
-    ${it.length?`<p class="hint">練習：先看語詞自己念，再翻開看答案。挑戰：選出正確的注音。</p><div class="bar"><button class="btn" id="pPr">練習（翻卡念念看）</button><button class="btn primary" id="pGo">挑戰（${it.length} 題）</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有念錯的多音字，取消上方的「只練錯題」就能練全部。':'選的課次裡沒有多音字，多音字在第三、四、五課。'}</p>`}</div>
+    ${it.length?`${timeChips()}<p class="hint">練習：先看語詞自己念，再翻開看答案。挑戰：選出正確的注音。</p><div class="bar"><button class="btn" id="pPr">練習（翻卡念念看）</button><button class="btn primary" id="pGo">挑戰（${it.length} 題）</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有念錯的多音字，取消上方的「只練錯題」就能練全部。':'選的課次裡沒有多音字，多音字在第三、四、五課。'}</p>`}</div>
     ${ps0.map(p=>`<div class="tbl"><table><tr><th colspan="3"><span class="kai" style="font-size:26px;color:var(--ink)">${p.c}</span>　${GN[p.g-1]}</th></tr>
       ${Object.entries(p.r).map(([z,m])=>`<tr><td class="zy" style="font-size:18px">${z}</td><td class="kai" style="white-space:normal;font-size:18px">${p.items.filter(i=>i[1]===z).map(i=>pw(p.c,i[0])).join('、')}</td><td class="hint" style="white-space:normal">${m}</td></tr>`).join('')}</table></div>`).join('')}`;
-  const g=$('#pGo');if(g)g.onclick=()=>{ps={q:shuffle(polyPool()),i:0,ok:0,bad:[]};polyQ()};
-  const pr=$('#pPr');if(pr)pr.onclick=()=>{ps={q:shuffle(polyPool()),i:0,ok:0,bad:[],pr:true};polyPr()};
+  const g=$('#pGo');if(g)g.onclick=()=>{rtStart('poly');ps={q:shuffle(polyPool()),i:0,ok:0,bad:[]};polyQ()};
+  const pr=$('#pPr');if(pr)pr.onclick=()=>{rtStart('poly');ps={q:shuffle(polyPool()),i:0,ok:0,bad:[],pr:true};polyPr()};
 }
 function polyPr(){
   if(ps.i>=ps.q.length)return polyDone();
   const x=ps.q[ps.i];
-  $('#polyArea').innerHTML=`<div class="flash"><span class="prog">練習 ${ps.i+1} / ${ps.q.length}・會念 ${ps.ok}</span>
+  $('#polyArea').innerHTML=`<div class="flash"><div class="rhud"></div><span class="prog">練習 ${ps.i+1} / ${ps.q.length}・會念 ${ps.ok}</span>
     <div class="qchar" style="font-size:clamp(44px,13vw,64px)">${pmark(x.p.c,x.w)}</div>
     <p class="qask">先自己念念看，「${x.p.c}」念什麼？</p>
     <div id="pAns"><button class="btn primary" id="pFlip">翻開看答案</button></div></div>`;
+  rtQ(null);
   $('#pFlip').onclick=()=>{
     $('#pAns').innerHTML=`<div class="fb ok" style="color:var(--ink)">念 <b class="zy" style="font-size:24px">${x.z}</b>　${x.p.r[x.z]}<br>
       同一個字的其他念法：${Object.keys(x.p.r).filter(z=>z!==x.z).map(z=>`<span class="zy">${z}</span>（${x.p.items.filter(i=>i[1]===z).slice(0,3).map(i=>pw(x.p.c,i[0])).join('、')}）`).join('；')}<br>${sayBtn(x.key,'念語詞')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="pKnow">我念對了</button><button class="btn rose primary" id="pNot">念錯了，記下來</button></div>`;
-    $('#pKnow').onclick=()=>{SFX.ok();ps.ok++;ps.i++;polyPr()};
-    $('#pNot').onclick=()=>{SFX.bad();ps.bad.push(x);wrongP[x.key]=(wrongP[x.key]||0)+1;save('zi4-wrongp',wrongP);renderScope();ps.i++;polyPr()};
+    $('#pKnow').onclick=()=>{rtAns(true);SFX.ok();ps.ok++;ps.i++;polyPr()};
+    $('#pNot').onclick=()=>{rtAns(false);SFX.bad();ps.bad.push(x);wrongP[x.key]=(wrongP[x.key]||0)+1;save('zi4-wrongp',wrongP);renderScope();ps.i++;polyPr()};
   };
 }
 function polyQ(){
   if(ps.i>=ps.q.length)return polyDone();
   const x=ps.q[ps.i],opts=shuffle(Object.keys(x.p.r));
-  $('#polyArea').innerHTML=`<div class="qcard"><span class="prog">第 ${ps.i+1} / ${ps.q.length} 題・答對 ${ps.ok}</span>
+  $('#polyArea').innerHTML=`<div class="qcard"><div class="rhud"></div><span class="prog">第 ${ps.i+1} / ${ps.q.length} 題・答對 ${ps.ok}</span>
     <div class="qchar" style="font-size:clamp(44px,13vw,64px)">${pmark(x.p.c,x.w)}</div>
     <p class="qask">「${x.p.c}」在這個語詞裡怎麼念？</p>
     <div class="opts">${opts.map(o=>`<button class="opt" data-v="${o}"><span class="o1 zy">${o}</span><span class="mark"></span></button>`).join('')}</div>
     <div id="pFb" style="width:100%"></div></div>`;
-  document.querySelectorAll('#polyArea .opt').forEach(b=>b.onclick=()=>{
-    if(ps.answered)return;ps.answered=true;const right=b.dataset.v===x.z;
+  const answer=b=>{
+    if(ps.answered)return;ps.answered=true;const right=!!b&&b.dataset.v===x.z;rtAns(right);
     document.querySelectorAll('#polyArea .opt').forEach(o=>{o.disabled=true;
       if(o.dataset.v===x.z){o.classList.add('ok');o.querySelector('.mark').textContent='✓ 正確答案'}
       else if(o===b){o.classList.add('bad');o.querySelector('.mark').textContent='✗ 你選的'}});
     if(right){ps.ok++;SFX.ok()}else{SFX.bad();ps.bad.push(x);wrongP[x.key]=(wrongP[x.key]||0)+1;save('zi4-wrongp',wrongP);renderScope()}
-    $('#pFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}「${x.key}」的「${x.p.c}」念 <b class="zy">${x.z}</b>，意思是${x.p.r[x.z]}。<br>${sayBtn(x.key,'念語詞')}</div>
+    $('#pFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':b?'再記一次：':'時間到！'}「${x.key}」的「${x.p.c}」念 <b class="zy">${x.z}</b>，意思是${x.p.r[x.z]}。<br>${sayBtn(x.key,'念語詞')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="pNext">${ps.i+1<ps.q.length?'下一題':'看成績'}</button></div>`;
     $('#pNext').onclick=()=>{ps.i++;ps.answered=false;polyQ()};$('#pNext').focus();
-  });
+  };
+  document.querySelectorAll('#polyArea .opt').forEach(b=>b.onclick=()=>answer(b));
+  rtQ(()=>answer(null));
 }
 function polyDone(){
   if(ps.q.length&&ps.ok===ps.q.length)celebrate('多音字全對！');
-  $('#polyArea').innerHTML=`<div class="done-box"><div class="score">${ps.ok} / ${ps.q.length}</div>
+  $('#polyArea').innerHTML=`<div class="done-box"><div class="score">${ps.ok} / ${ps.q.length}</div>${rtEnd(ps.pr?'-pr':'')}
    <p class="qask">${ps.bad.length?'念錯的語詞：':'全對！'}</p>
    <div class="wlist">${ps.bad.map(x=>`<span class="wz" style="font-size:20px">${x.key} <span class="zy" style="font-size:14px">${x.z}</span></span>`).join('')}</div>
    <div class="center">${ps.bad.length?'<button class="btn rose primary" id="pRe">只練念錯的</button>':''}<button class="btn" id="pAgain">回到整理表</button></div></div>`;
   $('#pAgain').onclick=polyIntro;
-  const r=$('#pRe');if(r)r.onclick=()=>{const pr=ps.pr;ps={q:shuffle(ps.bad),i:0,ok:0,bad:[],pr};pr?polyPr():polyQ()};
+  const r=$('#pRe');if(r)r.onclick=()=>{const pr=ps.pr;rtStart('poly');ps={q:shuffle(ps.bad),i:0,ok:0,bad:[],pr};pr?polyPr():polyQ()};
 }
 
 /* ===== 形近字（課本「字形辨別」）===== */
@@ -873,56 +921,58 @@ let fs=null;
 function formIntro(){
   const fam=FAM.filter(f=>st.groups.has(f.g)),it=formPool();
   $('#formArea').innerHTML=`<div class="qcard"><p class="qask">長得很像的字，看語詞和注音找出正確的字。考卷上的「改錯字」最常考這些！</p>
-    ${it.length?`<p class="hint">練習：看注音自己寫出來，再對答案。挑戰：從長得像的字裡選一個。</p><div class="bar">${sizeSel('fN')}<button class="btn" id="fPr">練習（寫寫看）</button><button class="btn primary" id="fGo">挑戰（選擇題）</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有選錯的形近字，取消上方的「只練錯題」就能練全部。':'這個範圍裡沒有形近字題目。'}</p>`}</div>
+    ${it.length?`${timeChips()}<p class="hint">練習：看注音自己寫出來，再對答案。挑戰：從長得像的字裡選一個。</p><div class="bar">${sizeSel('fN')}<button class="btn" id="fPr">練習（寫寫看）</button><button class="btn primary" id="fGo">挑戰（選擇題）</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有選錯的形近字，取消上方的「只練錯題」就能練全部。':'這個範圍裡沒有形近字題目。'}</p>`}</div>
     ${[1,2,3,4,5,6].filter(g=>st.groups.has(g)).map(g=>`<div class="groupHead">${GN[g-1]}　${TITLE[g-1]}</div><div class="tbl"><table>${fam.filter(f=>f.g===g).map(f=>`<tr><td style="white-space:normal">${f.m.map(m=>`<span class="kai" style="font-size:24px;color:var(--rose-deep)">${m.c}</span><span class="fz">${FZY[m.c]}</span><span class="kai">：${m.ws.map(w=>FWZ[w]?`${w}<span class="fz">（${m.c}念${FWZ[w]}）</span>`:w).join('、')}</span>`).join('　　')}</td></tr>`).join('')}</table></div>`).join('')}`;
-  const g=$('#fGo');if(g)g.onclick=()=>{fs={q:shuffle(formPool()).slice(0,+$('#fN').value),i:0,ok:0,bad:[]};formQ()};
-  const pr=$('#fPr');if(pr)pr.onclick=()=>{fs={q:shuffle(formPool()).slice(0,+$('#fN').value),i:0,ok:0,bad:[],pr:true};formPr()};
+  const g=$('#fGo');if(g)g.onclick=()=>{rtStart('form');fs={q:shuffle(formPool()).slice(0,+$('#fN').value),i:0,ok:0,bad:[]};formQ()};
+  const pr=$('#fPr');if(pr)pr.onclick=()=>{rtStart('form');fs={q:shuffle(formPool()).slice(0,+$('#fN').value),i:0,ok:0,bad:[],pr:true};formPr()};
 }
 function formPr(){
   if(fs.i>=fs.q.length)return formDone();
   const x=fs.q[fs.i];
-  $('#formArea').innerHTML=`<div class="prompt"><span class="prog">練習 ${fs.i+1} / ${fs.q.length}・寫對 ${fs.ok}</span>
+  $('#formArea').innerHTML=`<div class="prompt"><div class="rhud"></div><span class="prog">練習 ${fs.i+1} / ${fs.q.length}・寫對 ${fs.ok}</span>
       <div class="word">${fblank(x)}</div><span class="hint">把框框裡的注音寫成國字，小心長得像的字　${sayBtn(x.w,'聽一聽')}</span></div>
     ${padHTML(x.c)}
     <div class="center"><button class="btn" id="fClr">擦掉重寫</button><button class="btn primary" id="fShow">對答案</button></div><div id="fRev"></div>`;
-  setupPad($('#formArea'));$('#fClr').onclick=clearPad;
+  setupPad($('#formArea'));$('#fClr').onclick=clearPad;rtQ(null);
   $('#fShow').onclick=()=>{$('#fShow').disabled=true;
     $('#fRev').innerHTML=`<div class="reveal"><div class="big">${x.c}</div><div class="info"><div class="kai" style="font-size:22px">${x.w}</div>
       <div>比一比：${x.f.m.map(m=>`<span class="kai"><b>${m.c}</b><span class="fz">${FZY[m.c]}</span>（${m.ws.join('、')}）</span>`).join('　')}</div></div></div>
       <div class="center" style="margin-top:10px"><button class="btn" id="fGh" aria-pressed="false">把答案疊在格子上比對</button></div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="fOk">我寫對了</button><button class="btn rose primary" id="fBad">寫錯了，記下來</button></div>`;
     $('#fGh').onclick=e=>{const g=$('#formArea .ghost');g.hidden=!g.hidden;e.currentTarget.setAttribute('aria-pressed',!g.hidden)};
-    $('#fOk').onclick=()=>{SFX.ok();fs.ok++;fs.i++;formPr()};
-    $('#fBad').onclick=()=>{SFX.bad();fs.bad.push(x);wrongF[x.w]=(wrongF[x.w]||0)+1;save('zi4-wrongf',wrongF);renderScope();fs.i++;formPr()};
+    $('#fOk').onclick=()=>{rtAns(true);SFX.ok();fs.ok++;fs.i++;formPr()};
+    $('#fBad').onclick=()=>{rtAns(false);SFX.bad();fs.bad.push(x);wrongF[x.w]=(wrongF[x.w]||0)+1;save('zi4-wrongf',wrongF);renderScope();fs.i++;formPr()};
   };
 }
 function formQ(){
   if(fs.i>=fs.q.length)return formDone();
   const x=fs.q[fs.i],opts=shuffle(x.f.m.map(m=>m.c));
-  $('#formArea').innerHTML=`<div class="qcard"><span class="prog">第 ${fs.i+1} / ${fs.q.length} 題・答對 ${fs.ok}</span>
+  $('#formArea').innerHTML=`<div class="qcard"><div class="rhud"></div><span class="prog">第 ${fs.i+1} / ${fs.q.length} 題・答對 ${fs.ok}</span>
     <div class="qchar" style="font-size:clamp(44px,13vw,64px)">${fblank(x)}</div>
     <p class="qask">框框裡的注音是哪一個字？　${sayBtn(x.w,'聽一聽')}</p>
     <div class="opts">${opts.map(o=>`<button class="opt" data-v="${o}"><span class="o1">${o}</span><span class="mark"></span></button>`).join('')}</div>
     <div id="fFb" style="width:100%"></div></div>`;
-  document.querySelectorAll('#formArea .opt').forEach(b=>b.onclick=()=>{
-    if(fs.answered)return;fs.answered=true;const right=b.dataset.v===x.c;
+  const answer=b=>{
+    if(fs.answered)return;fs.answered=true;const right=!!b&&b.dataset.v===x.c;rtAns(right);
     document.querySelectorAll('#formArea .opt').forEach(o=>{o.disabled=true;
       if(o.dataset.v===x.c){o.classList.add('ok');o.querySelector('.mark').textContent='✓ 正確答案'}
       else if(o===b){o.classList.add('bad');o.querySelector('.mark').textContent='✗ 你選的'}});
     if(right){fs.ok++;SFX.ok()}else{SFX.bad();fs.bad.push(x);wrongF[x.w]=(wrongF[x.w]||0)+1;save('zi4-wrongf',wrongF);renderScope()}
-    $('#fFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}<b class="kai">${x.w}</b>。比一比：${x.f.m.map(m=>`<span class="kai"><b>${m.c}</b><span class="fz">${FZY[m.c]}</span>（${m.ws.join('、')}）</span>`).join('　')}</div>
+    $('#fFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':b?'再記一次：':'時間到！'}<b class="kai">${x.w}</b>。比一比：${x.f.m.map(m=>`<span class="kai"><b>${m.c}</b><span class="fz">${FZY[m.c]}</span>（${m.ws.join('、')}）</span>`).join('　')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="fNext">${fs.i+1<fs.q.length?'下一題':'看成績'}</button></div>`;
     $('#fNext').onclick=()=>{fs.i++;fs.answered=false;formQ()};$('#fNext').focus();
-  });
+  };
+  document.querySelectorAll('#formArea .opt').forEach(b=>b.onclick=()=>answer(b));
+  rtQ(()=>answer(null));
 }
 function formDone(){
   if(fs.q.length&&fs.ok===fs.q.length)celebrate('形近字全對！');
-  $('#formArea').innerHTML=`<div class="done-box"><div class="score">${fs.ok} / ${fs.q.length}</div>
+  $('#formArea').innerHTML=`<div class="done-box"><div class="score">${fs.ok} / ${fs.q.length}</div>${rtEnd(fs.pr?'-pr':'')}
    <p class="qask">${fs.bad.length?'選錯的語詞：':'全對！'}</p>
    <p class="qask">${fs.pr?'（練習寫字）':'（選擇題）'}</p><div class="wlist">${fs.bad.map(x=>`<span class="wz" style="font-size:22px">${x.w}</span>`).join('')}</div>
    <div class="center">${fs.bad.length?'<button class="btn rose primary" id="fRe">只練錯的</button>':''}<button class="btn" id="fAgain">回到整理表</button></div></div>`;
   $('#fAgain').onclick=formIntro;
-  const r=$('#fRe');if(r)r.onclick=()=>{const pr=fs.pr;fs={q:shuffle(fs.bad),i:0,ok:0,bad:[],pr};pr?formPr():formQ()};
+  const r=$('#fRe');if(r)r.onclick=()=>{const pr=fs.pr;rtStart('form');fs={q:shuffle(fs.bad),i:0,ok:0,bad:[],pr};pr?formPr():formQ()};
 }
 
 /* ===== 改錯字（出自第一～六課隨堂測驗）：先找出錯字，再選正確的字 ===== */
@@ -960,7 +1010,7 @@ function errIntro(){
   const it=errPool();
   $('#errArea').innerHTML=`<div class="qcard"><p class="qask">考卷的「改錯字」大題：先在句子裡<b>點出錯字</b>，再<b>選出正確的字</b>。題目出自老師的隨堂測驗。</p>
     ${it.length?`<button class="btn primary" id="eGo">開始改錯（${it.length} 題）</button>`:`<p class="hint">${st.onlyWrong?'目前沒有改錯字的錯題。':'這個範圍裡沒有改錯字題目。'}</p>`}</div>`;
-  const g=$('#eGo');if(g)g.onclick=()=>{es={q:shuffle(it),i:0,pts:0,max:0,perfect:0,bad:[]};errQ()};
+  const g=$('#eGo');if(g)g.onclick=()=>{rtStart('err');es={q:shuffle(it),i:0,pts:0,max:0,perfect:0,bad:[]};errQ()};
 }
 function errQ(){
   if(es.i>=es.q.length)return errDone();
@@ -968,11 +1018,12 @@ function errQ(){
   const wrongIdx=e.fx.map(([w])=>e.s.indexOf(w));
   const sel=new Set();
   const isP=ch=>/[，。、！？：；「」（）\s]/.test(ch);
-  $('#errArea').innerHTML=`<div class="qcard"><span class="prog">第 ${es.i+1} / ${es.q.length} 題</span>
+  $('#errArea').innerHTML=`<div class="qcard"><div class="rhud"></div><span class="prog">第 ${es.i+1} / ${es.q.length} 題</span>
     <p class="qask">這段話有 <b>${e.fx.length}</b> 個錯字，點出來（再點一次可以取消）。</p>
     <div class="sent" id="eSent">${chars.map((ch,i)=>isP(ch)?`<span class="pc">${ch}</span>`:`<button class="sc" data-i="${i}">${ch}</button>`).join('')}</div>
     <div class="center"><span class="prog" id="eCnt">已選 0 / ${e.fx.length}</span><button class="btn primary" id="eChk">檢查</button></div>
     <div id="eFix" style="width:100%"></div></div>`;
+  rtQ(null);
   document.querySelectorAll('#eSent .sc').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;sel.has(i)?sel.delete(i):sel.add(i);b.classList.toggle('on',sel.has(i));$('#eCnt').textContent=`已選 ${sel.size} / ${e.fx.length}`});
   $('#eChk').onclick=()=>{
     $('#eChk').disabled=true;
@@ -994,7 +1045,7 @@ function errQ(){
       row.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
         row.querySelectorAll('.opt').forEach(o=>{o.disabled=true;if(o.dataset.v===c)o.classList.add('ok');else if(o===b)o.classList.add('bad')});
         answered++;
-        if(b.dataset.v===c){fixed++;es.pts++;SFX.match()}else{SFX.bad();allOk=false;addWrong(c,'e');es.bad.push(c)}
+        rtAns(b.dataset.v===c);if(b.dataset.v===c){fixed++;es.pts++;SFX.match()}else{SFX.bad();allOk=false;addWrong(c,'e');es.bad.push(c)}
         if(answered===e.fx.length){
           if(allOk&&fixed===e.fx.length)es.perfect++;
           e.fx.forEach(([w2,c2])=>{const i=e.s.indexOf(w2);const btn=document.querySelector(`#eSent .sc[data-i="${i}"]`);if(btn&&!btn.classList.contains('hit')){addWrong(c2,'e');es.bad.push(c2)}});
@@ -1009,7 +1060,7 @@ function errDone(){
   const pct=es.max?Math.round(es.pts/es.max*100):0;
   if(es.q.length&&pct===100)celebrate('改錯字全對！');
   const bad=[...new Set(es.bad)];
-  $('#errArea').innerHTML=`<div class="done-box"><div class="score">${pct} 分</div>
+  $('#errArea').innerHTML=`<div class="done-box"><div class="score">${pct} 分</div>${rtEnd()}
     <p class="qask">找錯字＋改正確共得 ${es.pts} / ${es.max} 點，全對的題目 ${es.perfect} / ${es.q.length} 題。</p>
     ${bad.length?`<p class="qask">改錯的字：</p><div class="wlist">${bad.map(c=>`<span class="wz">${c}</span>`).join('')}</div>`:''}
     <div class="center"><button class="btn" id="eAgain">再來一次</button></div></div>`;
@@ -1056,73 +1107,79 @@ function idmPool(){let it=IDM.filter(s=>s.g.some(g=>st.groups.has(g))).flatMap(s
 function idmIntro(){
   const sets=IDM.filter(s=>s.g.some(g=>st.groups.has(g))),it=idmPool();
   $('#idmArea').innerHTML=`<div class="qcard"><p class="qask">隨堂測驗的<b>成語配對</b>：看句子選出最適合的成語。先看下面的意思整理，再挑戰。</p>
-    ${it.length?`<div class="bar">${sizeSel('iN')}<button class="btn primary" id="iGo">開始挑戰</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有選錯的成語。':'這個範圍裡沒有成語題目。'}</p>`}</div>
+    ${it.length?`${timeChips()}<div class="bar">${sizeSel('iN')}<button class="btn primary" id="iGo">開始挑戰</button></div>`:`<p class="hint">${st.onlyWrong?'目前沒有選錯的成語。':'這個範圍裡沒有成語題目。'}</p>`}</div>
     ${sets.map(s=>`<div class="groupHead">第${s.g.map(g=>'一二三四五六'[g-1]).join('、')}課</div><div class="tbl"><table>${s.ws.split(' ').map(w=>`<tr><td class="kai" style="font-size:20px">${w}</td><td class="hint" style="white-space:normal">${IDM_MEAN[w]}</td></tr>`).join('')}</table></div>`).join('')}`;
-  const g=$('#iGo');if(g)g.onclick=()=>{is={q:shuffle(idmPool()).slice(0,+$('#iN').value),i:0,ok:0,bad:[]};idmQ()};
+  const g=$('#iGo');if(g)g.onclick=()=>{rtStart('idm');is={q:shuffle(idmPool()).slice(0,+$('#iN').value),i:0,ok:0,bad:[]};idmQ()};
 }
 function idmQ(){
   if(is.i>=is.q.length)return idmDone();
   const x=is.q[is.i],opts=shuffle(x.s.ws.split(' '));
-  $('#idmArea').innerHTML=`<div class="qcard"><span class="prog">第 ${is.i+1} / ${is.q.length} 題・答對 ${is.ok}</span>
+  $('#idmArea').innerHTML=`<div class="qcard"><div class="rhud"></div><span class="prog">第 ${is.i+1} / ${is.q.length} 題・答對 ${is.ok}</span>
     <p class="kai" style="font-size:22px;line-height:1.7;margin:0">${esc(x.t).replace('（　）','<span class="box" style="min-width:5em">＿＿＿＿</span>')}</p>
     <div class="opts">${opts.map(o=>`<button class="opt" data-v="${o}"><span class="o1" style="font-size:22px">${o}</span><span class="mark"></span></button>`).join('')}</div>
     <div id="iFb" style="width:100%"></div></div>`;
-  document.querySelectorAll('#idmArea .opt').forEach(b=>b.onclick=()=>{
-    if(is.answered)return;is.answered=true;const right=b.dataset.v===x.a;
+  const answer=b=>{
+    if(is.answered)return;is.answered=true;const right=!!b&&b.dataset.v===x.a;rtAns(right);
     document.querySelectorAll('#idmArea .opt').forEach(o=>{o.disabled=true;
       if(o.dataset.v===x.a){o.classList.add('ok');o.querySelector('.mark').textContent='✓ 正確答案'}
       else if(o===b){o.classList.add('bad');o.querySelector('.mark').textContent='✗ 你選的'}});
     if(right){is.ok++;SFX.ok()}else{SFX.bad();is.bad.push(x);wrongI[x.a]=(wrongI[x.a]||0)+1;save('zi4-wrongi',wrongI);renderScope()}
-    $('#iFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}<b class="kai">${x.a}</b>：${IDM_MEAN[x.a]}。${right?'':`<br>你選的「${b.dataset.v}」是：${IDM_MEAN[b.dataset.v]}。`}<br>${sayBtn(x.a,'念成語')}</div>
+    $('#iFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':b?'再記一次：':'時間到！'}<b class="kai">${x.a}</b>：${IDM_MEAN[x.a]}。${right||!b?'':`<br>你選的「${b.dataset.v}」是：${IDM_MEAN[b.dataset.v]}。`}<br>${sayBtn(x.a,'念成語')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="iNext">${is.i+1<is.q.length?'下一題':'看成績'}</button></div>`;
     $('#iNext').onclick=()=>{is.i++;is.answered=false;idmQ()};$('#iNext').focus();
-  });
+  };
+  document.querySelectorAll('#idmArea .opt').forEach(b=>b.onclick=()=>answer(b));
+  rtQ(()=>answer(null));
 }
 function idmDone(){
   if(is.q.length&&is.ok===is.q.length)celebrate('成語全對！');
-  $('#idmArea').innerHTML=`<div class="done-box"><div class="score">${is.ok} / ${is.q.length}</div>
+  $('#idmArea').innerHTML=`<div class="done-box"><div class="score">${is.ok} / ${is.q.length}</div>${rtEnd()}
    <p class="qask">${is.bad.length?'選錯的成語：':'全對！'}</p>
    <div class="wlist">${is.bad.map(x=>`<span class="wz" style="font-size:20px">${x.a}</span>`).join('')}</div>
    <div class="center">${is.bad.length?'<button class="btn rose primary" id="iRe">只練選錯的</button>':''}<button class="btn" id="iAgain">回到整理表</button></div></div>`;
   $('#iAgain').onclick=idmIntro;
-  const r=$('#iRe');if(r)r.onclick=()=>{is={q:shuffle(is.bad),i:0,ok:0,bad:[]};idmQ()};
+  const r=$('#iRe');if(r)r.onclick=()=>{rtStart('idm');is={q:shuffle(is.bad),i:0,ok:0,bad:[]};idmQ()};
 }
 
-/* ===== 100 分慶祝：原創角色「小墨」和「小筆」跳舞＋彩紙 ===== */
+/* ===== 慶祝角色（全部原創，每次隨機兩位出場）===== */
+const FACE=(y,c='var(--ink)')=>`<circle cx="48" cy="${y}" r="5" fill="${c}"/><circle cx="72" cy="${y}" r="5" fill="${c}"/><circle cx="49.5" cy="${y-1.5}" r="1.6" fill="#fff"/><circle cx="73.5" cy="${y-1.5}" r="1.6" fill="#fff"/>
+ <ellipse cx="40" cy="${y+11}" rx="6" ry="4" fill="var(--c2)" opacity=".75"/><ellipse cx="80" cy="${y+11}" rx="6" ry="4" fill="var(--c2)" opacity=".75"/><path d="M51 ${y+14} Q60 ${y+23} 69 ${y+14}" stroke="${c}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
+const CHARS=[
+ {name:'小墨',body:`<path d="M60 18 C30 46 24 70 24 88 a36 36 0 0 0 72 0 C96 70 90 46 60 18Z" fill="#8fb8e8" stroke="var(--ink)" stroke-width="3"/>`+FACE(80)},
+ {name:'小筆',body:`<rect x="36" y="40" width="48" height="82" rx="10" fill="var(--c4)" stroke="var(--ink)" stroke-width="3"/><path d="M36 50 L60 12 L84 50Z" fill="var(--c3)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/><path d="M54 22 L60 12 L66 22Z" fill="var(--ink)"/>`+FACE(74)},
+ {name:'飯糰君',body:`<path d="M60 22 C70 22 104 92 98 110 C94 122 26 122 22 110 C16 92 50 22 60 22Z" fill="#fffaf0" stroke="var(--ink)" stroke-width="3"/><rect x="40" y="100" width="40" height="22" rx="4" fill="#2f3b33"/>`+FACE(76)},
+ {name:'星星妹',body:`<path d="M60 14 L74 52 L114 54 L82 78 L94 118 L60 95 L26 118 L38 78 L6 54 L46 52Z" fill="var(--c3)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/>`+FACE(70)},
+ {name:'雲朵朵',body:`<path d="M30 112 C10 112 8 84 26 80 C22 58 46 46 58 58 C66 38 96 42 94 66 C114 66 116 112 92 112Z" fill="#f4f7fb" stroke="var(--ink)" stroke-width="3"/>`+FACE(84)},
+ {name:'小龍寶',body:`<path d="M40 40 L46 26 L54 38 L60 22 L66 38 L74 26 L80 40" fill="var(--c3)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/><ellipse cx="60" cy="82" rx="38" ry="44" fill="#9ed49a" stroke="var(--ink)" stroke-width="3"/><ellipse cx="60" cy="98" rx="20" ry="18" fill="#e9f6d8"/>`+FACE(70)},
+ {name:'包子弟',body:`<path d="M20 112 C18 70 40 40 60 40 C80 40 102 70 100 112Z" fill="#fff3e2" stroke="var(--ink)" stroke-width="3"/><path d="M60 40 L54 30 M60 40 L60 28 M60 40 L66 30" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>`+FACE(80)},
+ {name:'貓頭鷹博士',body:`<path d="M30 40 L38 24 L48 38 M90 40 L82 24 L72 38" fill="none" stroke="var(--ink)" stroke-width="3"/><ellipse cx="60" cy="80" rx="38" ry="44" fill="#c8a27a" stroke="var(--ink)" stroke-width="3"/><circle cx="46" cy="70" r="13" fill="#fff" stroke="var(--ink)" stroke-width="2"/><circle cx="74" cy="70" r="13" fill="#fff" stroke="var(--ink)" stroke-width="2"/><circle cx="46" cy="70" r="5" fill="var(--ink)"/><circle cx="74" cy="70" r="5" fill="var(--ink)"/><path d="M55 84 L60 92 L65 84Z" fill="var(--c3)" stroke="var(--ink)" stroke-width="2"/><ellipse cx="60" cy="104" rx="18" ry="12" fill="#ead6bd"/>`},
+];
+function dancerSVG(c,cls){
+  const hand=['var(--c2)','var(--c3)','var(--c4)','var(--c1)'][Math.floor(Math.random()*4)];
+  return `<svg class="dancer ${cls}" viewBox="0 0 120 150" aria-hidden="true">
+   <g class="arm al"><path d="M28 80 Q12 64 8 46" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="8" cy="44" r="6" fill="${hand}"/></g>
+   <g class="arm ar"><path d="M92 80 Q108 64 112 46" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="112" cy="44" r="6" fill="${hand}"/></g>
+   <g class="leg ll"><path d="M48 118 L42 144" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
+   <g class="leg lr"><path d="M72 118 L78 144" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
+   ${c.body}</svg>`;
+}
+
+/* ===== 100 分慶祝：隨機兩位原創角色跳舞＋彩紙 ===== */
 function celebrate(msg){
   SFX.win();
   let ov=document.getElementById('party');if(ov)ov.remove();
   ov=document.createElement('div');ov.id='party';ov.setAttribute('role','dialog');ov.setAttribute('aria-label','100 分慶祝');
   const conf=Array.from({length:40},(_,i)=>`<i style="left:${Math.random()*100}%;animation-delay:${(Math.random()*1.2).toFixed(2)}s;animation-duration:${(2.2+Math.random()*1.8).toFixed(2)}s;background:var(--c${i%4});transform:rotate(${Math.random()*360}deg)"></i>`).join('');
+  const pair=shuffle(CHARS).slice(0,2);
   ov.innerHTML=`<div class="confetti">${conf}</div>
    <div class="party-card">
     <div class="dancers">
-     <svg class="dancer d1" viewBox="0 0 120 150" aria-hidden="true">
-      <g class="arm al"><path d="M30 78 Q12 62 8 44" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="8" cy="42" r="6" fill="var(--c2)"/></g>
-      <g class="arm ar"><path d="M90 78 Q108 62 112 44" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="112" cy="42" r="6" fill="var(--c2)"/></g>
-      <path d="M60 18 C30 46 24 70 24 88 a36 36 0 0 0 72 0 C96 70 90 46 60 18Z" fill="var(--c1)" stroke="var(--ink)" stroke-width="3"/>
-      <circle cx="48" cy="80" r="5" fill="var(--ink)"/><circle cx="72" cy="80" r="5" fill="var(--ink)"/>
-      <circle cx="49.5" cy="78.5" r="1.6" fill="#fff"/><circle cx="73.5" cy="78.5" r="1.6" fill="#fff"/>
-      <ellipse cx="40" cy="92" rx="6" ry="4" fill="var(--c2)" opacity=".7"/><ellipse cx="80" cy="92" rx="6" ry="4" fill="var(--c2)" opacity=".7"/>
-      <path d="M50 96 Q60 106 70 96" stroke="var(--ink)" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <g class="leg ll"><path d="M48 122 L42 142" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
-      <g class="leg lr"><path d="M72 122 L78 142" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
-     </svg>
+     ${dancerSVG(pair[0],'d1')}
      <div class="hundred">100</div>
-     <svg class="dancer d2" viewBox="0 0 120 150" aria-hidden="true">
-      <g class="arm al"><path d="M40 70 Q20 60 14 40" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="14" cy="38" r="6" fill="var(--c3)"/></g>
-      <g class="arm ar"><path d="M80 70 Q100 60 106 40" stroke="var(--ink)" stroke-width="5" fill="none" stroke-linecap="round"/><circle cx="106" cy="38" r="6" fill="var(--c3)"/></g>
-      <rect x="38" y="34" width="44" height="86" rx="10" fill="var(--c4)" stroke="var(--ink)" stroke-width="3"/>
-      <path d="M38 44 L60 8 L82 44Z" fill="var(--c3)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M54 18 L60 8 L66 18Z" fill="var(--ink)"/>
-      <circle cx="51" cy="68" r="4.5" fill="var(--ink)"/><circle cx="69" cy="68" r="4.5" fill="var(--ink)"/>
-      <path d="M50 82 Q60 92 70 82" stroke="var(--ink)" stroke-width="3" fill="none" stroke-linecap="round"/>
-      <g class="leg ll"><path d="M50 120 L44 142" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
-      <g class="leg lr"><path d="M70 120 L76 142" stroke="var(--ink)" stroke-width="5" stroke-linecap="round"/></g>
-     </svg>
+     ${dancerSVG(pair[1],'d2')}
     </div>
     <div class="party-title">${esc(msg||'100 分！')}</div>
-    <p class="party-sub">小墨和小筆在幫你跳舞慶祝！</p>
+    <p class="party-sub">${pair[0].name}和${pair[1].name}在幫你跳舞慶祝！</p>
     <button class="btn primary" id="partyClose">好耶，繼續加油</button>
    </div>`;
   document.body.appendChild(ov);
