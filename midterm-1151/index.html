@@ -76,6 +76,9 @@ select{font:inherit;padding:6px 8px;border-radius:8px;border:1.5px solid var(--l
 .cover *{visibility:hidden}
 .zy{font-family:var(--sans);letter-spacing:1px}
 .kai{font-family:var(--kai)}
+.say{display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--sage-deep);background:var(--card);color:var(--sage-deep);border-radius:999px;padding:2px 10px;font-size:14px;font-weight:700;vertical-align:middle;margin:2px 4px 2px 0;font-family:var(--sans)}
+.say svg{width:16px;height:16px;fill:currentColor}
+.say:active{background:var(--sage)}
 .flag{display:inline-block;font-size:12px;background:var(--rose);color:var(--ink);border-radius:6px;padding:0 6px;margin-left:6px;vertical-align:middle}
 @media (max-width:460px){.detail{grid-template-columns:1fr}.detail .tian{width:150px;margin:0 auto}}
 
@@ -299,6 +302,21 @@ const radTxt=x=>`${x.r}${VAR[x.c]?`（寫成「${VAR[x.c]}」）`:''}`;
 function load(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}}
 function save(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 
+/* ===== 發音（瀏覽器內建語音，優先用臺灣國語）===== */
+const SPK='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9v6h4l5 4V5L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>';
+const sayBtn=(t,label)=>`<button type="button" class="say" data-say="${esc(t)}" aria-label="${label}：${esc(t)}">${SPK}${label}</button>`;
+let zhVoice=null;
+const canSpeak=()=>{try{return 'speechSynthesis' in window && typeof SpeechSynthesisUtterance!=='undefined'}catch(e){return false}};
+function pickVoice(){try{const vs=speechSynthesis.getVoices();zhVoice=vs.find(v=>/zh[-_]TW/i.test(v.lang))||vs.find(v=>/zh[-_](HK|Hant)/i.test(v.lang))||vs.find(v=>/^(zh|cmn)/i.test(v.lang))||null}catch(e){}}
+if(canSpeak()){pickVoice();try{speechSynthesis.onvoiceschanged=pickVoice}catch(e){}}
+function say(t){
+  if(!canSpeak()){alertSay('這個瀏覽器不支援發音，請改用 Chrome、Safari 或 Edge。');return}
+  try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='zh-TW';if(zhVoice)u.voice=zhVoice;u.rate=0.75;speechSynthesis.speak(u)}catch(e){alertSay('發音失敗，請再按一次。')}
+  if(canSpeak()&&!zhVoice){pickVoice();if(!zhVoice)alertSay('找不到中文語音，聲音可能不正確。可在裝置設定裡加裝「中文（台灣）」語音。')}
+}
+function alertSay(m){let t=document.getElementById('sayToast');if(!t){t=document.createElement('div');t.id='sayToast';t.setAttribute('role','status');t.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--paper);padding:8px 14px;border-radius:10px;font-size:14px;z-index:20;max-width:90vw';document.body.appendChild(t)}t.textContent=m;t.hidden=false;clearTimeout(t._h);t._h=setTimeout(()=>t.hidden=true,3500)}
+document.addEventListener('click',e=>{const b=e.target.closest('[data-say]');if(b){e.stopPropagation();say(b.dataset.say)}},true);
+
 /* ===== 範圍與錯題 ===== */
 let wrong=load('zi4-wrong',{}),wrongP=load('zi4-wrongp',{}),wrongF=load('zi4-wrongf',{});
 const st={groups:new Set([1,2,3,4,5,6]),onlyWrong:false,sel:'灣',selfTest:false};
@@ -350,6 +368,7 @@ function renderCards(){
   $('#detail').innerHTML=p.length?`
     <div class="tian"><span class="z">${x.c}</span></div>
     <dl class="facts">
+      <dt>發音</dt><dd>${cv(sayBtn(x.c,'念字')+sayBtn(x.w.replace('○',x.c),'念語詞'))}</dd>
       <dt>注音</dt><dd class="zy">${cv(x.z)}</dd>
       <dt>部首</dt><dd>${cv(`<span class="kai">${x.r}</span> <small class="zy">${RZ[x.r]||''}</small>${VAR[x.c]?` <small>寫在字裡變成「${VAR[x.c]}」</small>`:''}`)}</dd>
       <dt>筆畫</dt><dd>${cv(`部首外 ${x.o} 畫・總共 ${x.t} 畫`)}</dd>
@@ -380,7 +399,7 @@ function writeQ(){
   if(ws.i>=ws.q.length)return writeDone();
   const x=ws.q[ws.i];
   $('#writeArea').innerHTML=`<div class="prompt"><span class="prog">第 ${ws.i+1} / ${ws.q.length} 字</span>
-      <div class="word">${promptWord(x)}</div><span class="hint">把框框裡的注音寫成國字</span></div>
+      <div class="word">${promptWord(x)}</div><span class="hint">把框框裡的注音寫成國字　${sayBtn(x.w.replace('○',x.c),'聽一聽')}</span></div>
     <div class="padwrap"><div class="tian pad" id="pad"><div class="ghost" id="ghost" hidden>${x.c}</div><canvas id="cv" aria-label="寫字格"></canvas></div></div>
     <div class="center"><button class="btn" id="wClear">擦掉重寫</button><button class="btn primary" id="wShow">對答案</button></div>
     <div id="wRev"></div>`;
@@ -463,7 +482,7 @@ function quizQ(k){
     if(right)s.ok++;else{s.bad.push(x.c);addWrong(x.c,k)}
     const why=k==='r'?`「${x.c}」的部首是「<b>${x.r}</b>」（${RZ[x.r]||''}）${VAR[x.c]?`，在字裡寫成「${VAR[x.c]}」`:''}，部首外 ${x.o} 畫，共 ${x.t} 畫。`
       :`「${x.c}」念 <b class="zy">${x.z}</b>，例如「${x.w.replace('○',x.c)}」。`;
-    $('#'+k+'Fb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}${why}</div>
+    $('#'+k+'Fb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}${why}<br>${k==='r'?sayBtn(x.r,'念部首')+sayBtn(x.c,'念字'):sayBtn(x.c,'念字')+sayBtn(x.w.replace('○',x.c),'念語詞')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="${k}Next">${s.i+1<s.q.length?'下一題':'看成績'}</button></div>`;
     $('#'+k+'Next').onclick=()=>{s.i++;s.answered=false;quizQ(k)};$('#'+k+'Next').focus();
   });
@@ -548,7 +567,7 @@ function polyQ(){
       if(o.dataset.v===x.z){o.classList.add('ok');o.querySelector('.mark').textContent='✓ 正確答案'}
       else if(o===b){o.classList.add('bad');o.querySelector('.mark').textContent='✗ 你選的'}});
     if(right)ps.ok++;else{ps.bad.push(x);wrongP[x.key]=(wrongP[x.key]||0)+1;save('zi4-wrongp',wrongP);renderScope()}
-    $('#pFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}「${x.key}」的「${x.p.c}」念 <b class="zy">${x.z}</b>，意思是${x.p.r[x.z]}。</div>
+    $('#pFb').innerHTML=`<div class="fb ${right?'ok':'bad'}">${right?'答對了！':'再記一次：'}「${x.key}」的「${x.p.c}」念 <b class="zy">${x.z}</b>，意思是${x.p.r[x.z]}。<br>${sayBtn(x.key,'念語詞')}</div>
       <div class="center" style="margin-top:10px"><button class="btn primary" id="pNext">${ps.i+1<ps.q.length?'下一題':'看成績'}</button></div>`;
     $('#pNext').onclick=()=>{ps.i++;ps.answered=false;polyQ()};$('#pNext').focus();
   });
@@ -588,7 +607,7 @@ function formQ(){
   const x=fs.q[fs.i],opts=shuffle(x.f.m.map(m=>m.c));
   $('#formArea').innerHTML=`<div class="qcard"><span class="prog">第 ${fs.i+1} / ${fs.q.length} 題・答對 ${fs.ok}</span>
     <div class="qchar" style="font-size:clamp(44px,13vw,64px)">${fblank(x)}</div>
-    <p class="qask">「？」應該填哪一個字？</p>
+    <p class="qask">「？」應該填哪一個字？　${sayBtn(x.w,'聽一聽')}</p>
     <div class="opts">${opts.map(o=>`<button class="opt" data-v="${o}"><span class="o1">${o}</span><span class="mark"></span></button>`).join('')}</div>
     <div id="fFb" style="width:100%"></div></div>`;
   document.querySelectorAll('#formArea .opt').forEach(b=>b.onclick=()=>{
